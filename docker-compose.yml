@@ -1,0 +1,86 @@
+services:
+  # ─── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crm_secret
+      POSTGRES_DB: crm_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d crm_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ─── WAHA (WhatsApp HTTP API) ────────────────────────────────────────────────
+  waha:
+    image: devlikeapro/waha:noweb
+    restart: unless-stopped
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WAHA_API_KEY: ${WAHA_API_KEY:-dev_waha_key}
+      WAHA_WEBHOOK_URL: ${APP_URL:-http://host.docker.internal:3000}/api/webhooks/waha
+      WAHA_WEBHOOK_HMAC_SECRET: ${WAHA_WEBHOOK_HMAC_SECRET:-dev_hmac_secret}
+    ports:
+      - "3001:3000"
+    volumes:
+      - waha_sessions:/app/.sessions
+    networks:
+      - internal
+
+  # ─── App (Next.js) ───────────────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://crm:crm_secret@postgres:5432/crm_db
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      WAHA_BASE_URL: http://waha:3000
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_WEBHOOK_HMAC_SECRET: ${WAHA_WEBHOOK_HMAC_SECRET}
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+    ports:
+      - "3000:3000"
+    networks:
+      - internal
+
+  # ─── Worker (Node.js) ────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://crm:crm_secret@postgres:5432/crm_db
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      WAHA_BASE_URL: http://waha:3000
+      WAHA_API_KEY: ${WAHA_API_KEY}
+      WAHA_WEBHOOK_HMAC_SECRET: ${WAHA_WEBHOOK_HMAC_SECRET}
+      WAHA_SESSION: ${WAHA_SESSION:-default}
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+  waha_sessions:
+
+networks:
+  internal:
+    driver: bridge

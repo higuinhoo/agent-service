@@ -1,0 +1,16 @@
+FROM node:20-alpine AS base
+RUN npm i -g pnpm tsx
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile
+
+FROM base AS runner
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY src ./src
+COPY worker ./worker
+COPY tsconfig.json ./
+EXPOSE 3100
+CMD ["tsx", "worker/index.ts"]

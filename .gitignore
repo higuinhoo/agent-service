@@ -1,0 +1,28 @@
+# Aplicação
+.next/
+node_modules/
+.pnpm-store/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+*.swp
+
+# Build outputs
+dist/
+out/
+
+# Teste
+coverage/
