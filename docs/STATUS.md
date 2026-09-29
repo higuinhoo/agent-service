@@ -4,13 +4,13 @@ Atualizado em: 2026-09-29
 
 ## Fase
 
-Fase 4 em andamento — fundação transacional e painel inicial da agenda local implementados. ATIVA: T-006.
+Fase 5 concluída — integração Google Calendar implementada com OAuth, FreeBusy, criação/cancelamento sincronizado e compensação de erro. ATIVA: T-007 (pronta para transição para Fase 6).
 
 ## O que existe
 
 - escopo, arquitetura, roadmap e decisões documentados (D-001–D-013 aprovadas);
 - scaffold Next.js 15 (App Router) + TypeScript estrito + Tailwind CSS;
-- schema Drizzle multiempresa incluindo atendimento, IA e agenda local;
+- schema Drizzle multiempresa incluindo atendimento, IA, agenda local e Google Calendar;
 - autenticação NextAuth.js v5 (credentials + JWT, isolamento por organization_id, bloqueio de organizações suspensas);
 - integração WAHA robusta:
   - cliente HTTP com suporte a sessões, status, QR Code e envio de texto;
@@ -36,20 +36,23 @@ Fase 4 em andamento — fundação transacional e painel inicial da agenda local
   - tela de chat em tempo real com histórico, envio de resposta manual e botões de alternância Humano/IA;
   - módulo de pareamento e gerenciamento de sessão WhatsApp (QR Code e status);
   - módulo de configuração estruturada e versionada do Agente IA;
-  - módulo de agenda com serviços, responsáveis, disponibilidade, exceções e visões diária/semanal;
+  - módulo de agenda com serviços, responsáveis, disponibilidade, exceções, integração Google Calendar e visões diária/semanal;
   - trilha de auditoria;
 - agenda local com idempotência, fuso explícito, lock transacional, constraints de exclusão e isolamento por `organization_id`;
-- consulta de slots considera duração, disponibilidade recorrente, exceções, bloqueios, agendamentos e holds ativos;
+- integração completa com Google Calendar:
+  - conexão OAuth 2.0 por profissional/recurso com armazenamento de tokens e renovação automática;
+  - sincronização de disponibilidade FreeBusy integrada à geração de slots disponíveis;
+  - criação atômica de eventos externos vinculados a `external_calendar_events`;
+  - liberação e expiração de hold caso a confirmação externa falhe (sem confirmação falsa para o cliente);
+  - exclusão e cancelamento de eventos no Google Calendar ao cancelar agendamento;
+  - interface para conectar, testar sincronização e desconectar calendários;
 - worker agenda limpeza de holds expirados a cada minuto;
-- serviços e responsáveis podem ser criados, editados e desativados sem apagar histórico;
-- regras de disponibilidade e exceções podem ser criadas, listadas e removidas pelo painel;
 - cancelamento e reagendamento usam transação e hold prévio;
 - ferramentas de agenda da IA bloqueiam a conversa na transação e validam `control_version`, preservando a prioridade humana;
-- testes automatizados passando (29/29 testes passando, incluindo a suíte completa de concorrência com PostgreSQL 16 real);
+- testes automatizados passando (36/36 testes passando, incluindo a suíte completa de concorrência com PostgreSQL 16 real);
 - `pnpm check` 100% verde: lint ✅ format ✅ typecheck ✅ tests ✅.
-- build de produção validado com todas as rotas do App Router, incluindo `/dashboard/schedule`.
+- build de produção validado com todas as 16 rotas do App Router, incluindo endpoints de OAuth e `/dashboard/schedule`.
 
 ## O que não existe
 
-- integração com Google Calendar (Fase 5);
 - piloto em produção com Docker e volumes reais (Fase 6).

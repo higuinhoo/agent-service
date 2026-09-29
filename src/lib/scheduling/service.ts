@@ -5,12 +5,20 @@ import {
   availabilityRules,
   bookingHolds,
   bookings,
+  calendarConnections,
   conversations,
+  externalCalendarEvents,
   organizations,
   resourceServices,
   resources,
   services,
 } from "@/lib/db/schema";
+import {
+  createGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
+  queryGoogleFreeBusy,
+  refreshGoogleAccessToken,
+} from "@/lib/calendar";
 import { isValidPeriod } from "./periods";
 import { buildAvailableSlots } from "./slots";
 import { zonedLocalDateTimeToUtc } from "./timezone";
@@ -355,112 +363,244 @@ export async function createBookingHold(input: CreateHoldInput) {
 }
 
 export async function confirmBookingFromHold(input: ConfirmBookingInput) {
-  return db.transaction(async (tx) => {
-    await assertAiControl(tx, input.organizationId, input.controlGuard);
-    const [existing] = await tx
-      .select()
-      .from(bookings)
-      .where(
-        and(
-          eq(bookings.organizationId, input.organizationId),
-          eq(bookings.idempotencyKey, input.idempotencyKey),
-        ),
-      )
-      .limit(1);
-    if (existing) return existing;
+  // 1. Verificação rápida de idempotência pré-lock
+  const [existing] = await db
+    .select()
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.organizationId, input.organizationId),
+        eq(bookings.idempotencyKey, input.idempotencyKey),
+      ),
+    )
+    .limit(1);
+  if (existing) return existing;
 
-    const [hold] = await tx
-      .select()
-      .from(bookingHolds)
-      .where(
-        and(
-          eq(bookingHolds.id, input.holdId),
-          eq(bookingHolds.organizationId, input.organizationId),
-        ),
-      )
-      .limit(1);
+  // 2. Consulta do hold e dados do serviço para montagem do evento externo
+  const [hold] = await db
+    .select({
+      id: bookingHolds.id,
+      organizationId: bookingHolds.organizationId,
+      resourceId: bookingHolds.resourceId,
+      serviceId: bookingHolds.serviceId,
+      contactId: bookingHolds.contactId,
+      startsAt: bookingHolds.startsAt,
+      endsAt: bookingHolds.endsAt,
+      expiresAt: bookingHolds.expiresAt,
+      status: bookingHolds.status,
+      timezone: organizations.timezone,
+      serviceName: services.name,
+    })
+    .from(bookingHolds)
+    .innerJoin(organizations, eq(organizations.id, bookingHolds.organizationId))
+    .innerJoin(services, eq(services.id, bookingHolds.serviceId))
+    .where(
+      and(eq(bookingHolds.id, input.holdId), eq(bookingHolds.organizationId, input.organizationId)),
+    )
+    .limit(1);
 
-    if (!hold || hold.status !== "ACTIVE") {
-      throw new SchedulingConflictError("A reserva temporária não está mais ativa.");
-    }
+  if (!hold || hold.status !== "ACTIVE") {
+    throw new SchedulingConflictError("A reserva temporária não está mais ativa.");
+  }
+  if (hold.expiresAt <= new Date()) {
+    await db
+      .update(bookingHolds)
+      .set({ status: "EXPIRED", updatedAt: new Date() })
+      .where(eq(bookingHolds.id, hold.id));
+    throw new SchedulingConflictError("A reserva temporária expirou.");
+  }
 
-    await lockResource(tx, input.organizationId, hold.resourceId);
-    const now = new Date();
+  // 3. Verificação de conexão externa com Google Calendar
+  const [connection] = await db
+    .select()
+    .from(calendarConnections)
+    .where(
+      and(
+        eq(calendarConnections.organizationId, input.organizationId),
+        eq(calendarConnections.resourceId, hold.resourceId),
+        eq(calendarConnections.isActive, true),
+      ),
+    )
+    .limit(1);
 
-    const [existingAfterLock] = await tx
-      .select()
-      .from(bookings)
-      .where(
-        and(
-          eq(bookings.organizationId, input.organizationId),
-          eq(bookings.idempotencyKey, input.idempotencyKey),
-        ),
-      )
-      .limit(1);
-    if (existingAfterLock) return existingAfterLock;
+  let externalEvent: { id: string; etag?: string } | null = null;
+  let activeAccessToken = connection?.accessToken;
 
-    const [currentHold] = await tx
-      .select()
-      .from(bookingHolds)
-      .where(
-        and(
-          eq(bookingHolds.id, input.holdId),
-          eq(bookingHolds.organizationId, input.organizationId),
-        ),
-      )
-      .limit(1);
+  if (connection) {
+    try {
+      if (
+        connection.tokenExpiresAt &&
+        connection.tokenExpiresAt <= new Date() &&
+        connection.refreshToken
+      ) {
+        const refreshed = await refreshGoogleAccessToken(connection.refreshToken);
+        activeAccessToken = refreshed.accessToken;
+        const expiresAt = refreshed.expiresIn
+          ? new Date(Date.now() + refreshed.expiresIn * 1000)
+          : undefined;
+        await db
+          .update(calendarConnections)
+          .set({
+            accessToken: activeAccessToken,
+            ...(expiresAt ? { tokenExpiresAt: expiresAt } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(calendarConnections.id, connection.id));
+      }
 
-    if (!currentHold || currentHold.status !== "ACTIVE") {
-      throw new SchedulingConflictError("A reserva temporária não está mais ativa.");
-    }
-
-    if (currentHold.expiresAt <= now) {
-      await tx
+      externalEvent = await createGoogleCalendarEvent({
+        accessToken: activeAccessToken!,
+        calendarId: connection.calendarId,
+        summary: `${hold.serviceName} - ${input.customerName}`,
+        description: `Cliente: ${input.customerName}\nTelefone: ${input.customerPhone}${input.notes ? `\nObservações: ${input.notes}` : ""}`,
+        startsAt: hold.startsAt,
+        endsAt: hold.endsAt,
+        timeZone: hold.timezone,
+        requestId: input.idempotencyKey,
+      });
+    } catch (err) {
+      // Falha externa expira o hold e permanece visível, impedindo confirmação falsa
+      const now = new Date();
+      await db
         .update(bookingHolds)
         .set({ status: "EXPIRED", updatedAt: now })
+        .where(eq(bookingHolds.id, hold.id));
+
+      await db
+        .update(calendarConnections)
+        .set({
+          syncStatus: "SYNC_ERROR",
+          lastError: err instanceof Error ? err.message : "Falha na sincronização",
+          updatedAt: now,
+        })
+        .where(eq(calendarConnections.id, connection.id));
+
+      throw new SchedulingConflictError(
+        "Falha ao sincronizar com o Google Calendar. O horário foi liberado.",
+      );
+    }
+  }
+
+  try {
+    return await db.transaction(async (tx) => {
+      await assertAiControl(tx, input.organizationId, input.controlGuard);
+
+      const [existingInTx] = await tx
+        .select()
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.organizationId, input.organizationId),
+            eq(bookings.idempotencyKey, input.idempotencyKey),
+          ),
+        )
+        .limit(1);
+      if (existingInTx) return existingInTx;
+
+      await lockResource(tx, input.organizationId, hold.resourceId);
+      const now = new Date();
+
+      const [existingAfterLock] = await tx
+        .select()
+        .from(bookings)
+        .where(
+          and(
+            eq(bookings.organizationId, input.organizationId),
+            eq(bookings.idempotencyKey, input.idempotencyKey),
+          ),
+        )
+        .limit(1);
+      if (existingAfterLock) return existingAfterLock;
+
+      const [currentHold] = await tx
+        .select()
+        .from(bookingHolds)
+        .where(
+          and(
+            eq(bookingHolds.id, input.holdId),
+            eq(bookingHolds.organizationId, input.organizationId),
+          ),
+        )
+        .limit(1);
+
+      if (!currentHold || currentHold.status !== "ACTIVE") {
+        throw new SchedulingConflictError("A reserva temporária não está mais ativa.");
+      }
+
+      if (currentHold.expiresAt <= now) {
+        await tx
+          .update(bookingHolds)
+          .set({ status: "EXPIRED", updatedAt: now })
+          .where(
+            and(
+              eq(bookingHolds.id, currentHold.id),
+              eq(bookingHolds.organizationId, input.organizationId),
+            ),
+          );
+        throw new SchedulingConflictError("A reserva temporária expirou.");
+      }
+
+      const [consumed] = await tx
+        .update(bookingHolds)
+        .set({ status: "CONSUMED", updatedAt: now })
         .where(
           and(
             eq(bookingHolds.id, currentHold.id),
             eq(bookingHolds.organizationId, input.organizationId),
+            eq(bookingHolds.status, "ACTIVE"),
           ),
-        );
-      throw new SchedulingConflictError("A reserva temporária expirou.");
+        )
+        .returning({ id: bookingHolds.id });
+
+      if (!consumed) throw new SchedulingConflictError();
+
+      const [created] = await tx
+        .insert(bookings)
+        .values({
+          organizationId: input.organizationId,
+          resourceId: currentHold.resourceId,
+          serviceId: currentHold.serviceId,
+          ...(currentHold.contactId ? { contactId: currentHold.contactId } : {}),
+          holdId: currentHold.id,
+          idempotencyKey: input.idempotencyKey,
+          startsAt: currentHold.startsAt,
+          endsAt: currentHold.endsAt,
+          customerName: input.customerName,
+          customerPhone: input.customerPhone,
+          ...(input.notes ? { notes: input.notes } : {}),
+        })
+        .returning();
+
+      if (!created) throw new Error("Não foi possível confirmar o agendamento.");
+
+      if (connection && externalEvent) {
+        await tx.insert(externalCalendarEvents).values({
+          organizationId: input.organizationId,
+          bookingId: created.id,
+          connectionId: connection.id,
+          externalEventId: externalEvent.id,
+          status: "SYNCED",
+          ...(externalEvent.etag ? { etag: externalEvent.etag } : {}),
+        });
+      }
+
+      return created;
+    });
+  } catch (txError) {
+    // Compensação: se a transação do banco falhou mas o evento já foi criado no Google, remove o evento externo
+    if (connection && externalEvent && activeAccessToken) {
+      try {
+        await deleteGoogleCalendarEvent({
+          accessToken: activeAccessToken,
+          calendarId: connection.calendarId,
+          eventId: externalEvent.id,
+        });
+      } catch (cleanupErr) {
+        console.warn("[confirmBookingFromHold] Erro na compensação externa:", cleanupErr);
+      }
     }
-
-    const [consumed] = await tx
-      .update(bookingHolds)
-      .set({ status: "CONSUMED", updatedAt: now })
-      .where(
-        and(
-          eq(bookingHolds.id, currentHold.id),
-          eq(bookingHolds.organizationId, input.organizationId),
-          eq(bookingHolds.status, "ACTIVE"),
-        ),
-      )
-      .returning({ id: bookingHolds.id });
-
-    if (!consumed) throw new SchedulingConflictError();
-
-    const [created] = await tx
-      .insert(bookings)
-      .values({
-        organizationId: input.organizationId,
-        resourceId: currentHold.resourceId,
-        serviceId: currentHold.serviceId,
-        ...(currentHold.contactId ? { contactId: currentHold.contactId } : {}),
-        holdId: currentHold.id,
-        idempotencyKey: input.idempotencyKey,
-        startsAt: currentHold.startsAt,
-        endsAt: currentHold.endsAt,
-        customerName: input.customerName,
-        customerPhone: input.customerPhone,
-        ...(input.notes ? { notes: input.notes } : {}),
-      })
-      .returning();
-
-    if (!created) throw new Error("Não foi possível confirmar o agendamento.");
-    return created;
-  });
+    throw txError;
+  }
 }
 
 export async function findAvailableSlots(input: FindAvailableSlotsInput) {
@@ -613,6 +753,65 @@ export async function findAvailableSlots(input: FindAvailableSlotsInput) {
       })),
   ];
 
+  // ─── Google Calendar FreeBusy Integration ──────────────────────────────────
+  try {
+    const connections = await db
+      .select()
+      .from(calendarConnections)
+      .where(
+        and(
+          eq(calendarConnections.organizationId, input.organizationId),
+          inArray(calendarConnections.resourceId, resourceIds),
+          eq(calendarConnections.isActive, true),
+        ),
+      );
+
+    for (const conn of connections) {
+      if (!conn.resourceId) continue;
+      try {
+        let accessToken = conn.accessToken;
+        if (conn.tokenExpiresAt && conn.tokenExpiresAt <= new Date() && conn.refreshToken) {
+          const refreshed = await refreshGoogleAccessToken(conn.refreshToken);
+          accessToken = refreshed.accessToken;
+          const expiresAt = refreshed.expiresIn
+            ? new Date(Date.now() + refreshed.expiresIn * 1000)
+            : undefined;
+          await db
+            .update(calendarConnections)
+            .set({
+              accessToken,
+              ...(expiresAt ? { tokenExpiresAt: expiresAt } : {}),
+              updatedAt: new Date(),
+            })
+            .where(eq(calendarConnections.id, conn.id));
+        }
+
+        const externalBusy = await queryGoogleFreeBusy({
+          accessToken,
+          calendarId: conn.calendarId,
+          timeMin: dayStart,
+          timeMax: dayEnd,
+          timeZone: catalog.timezone,
+        });
+
+        for (const slot of externalBusy) {
+          busyPeriods.push({
+            resourceId: conn.resourceId,
+            startsAt: slot.startsAt,
+            endsAt: slot.endsAt,
+          });
+        }
+      } catch (calErr) {
+        console.warn(
+          `[findAvailableSlots] FreeBusy falhou para recurso ${conn.resourceId}:`,
+          calErr,
+        );
+      }
+    }
+  } catch (err) {
+    console.warn("[findAvailableSlots] Falha ao consultar conexões de calendário:", err);
+  }
+
   return buildAvailableSlots({
     windows: windows.filter((window) => window.endsAt > new Date()),
     busyPeriods,
@@ -752,7 +951,7 @@ export async function cancelBooking(
   bookingId: string,
   controlGuard?: AiControlGuard,
 ) {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     await assertAiControl(tx, organizationId, controlGuard);
     const [current] = await tx
       .select()
@@ -760,7 +959,7 @@ export async function cancelBooking(
       .where(and(eq(bookings.id, bookingId), eq(bookings.organizationId, organizationId)))
       .limit(1);
     if (!current) return null;
-    if (current.status === "CANCELLED") return current;
+    if (current.status === "CANCELLED") return { cancelled: current, externalSync: null };
     if (current.status !== "CONFIRMED") {
       throw new SchedulingValidationError("Somente agendamentos confirmados podem ser cancelados.");
     }
@@ -777,6 +976,56 @@ export async function cancelBooking(
         ),
       )
       .returning();
-    return cancelled ?? null;
+
+    const [extEvent] = await tx
+      .select()
+      .from(externalCalendarEvents)
+      .innerJoin(
+        calendarConnections,
+        eq(calendarConnections.id, externalCalendarEvents.connectionId),
+      )
+      .where(
+        and(
+          eq(externalCalendarEvents.organizationId, organizationId),
+          eq(externalCalendarEvents.bookingId, bookingId),
+          eq(externalCalendarEvents.status, "SYNCED"),
+        ),
+      )
+      .limit(1);
+
+    if (extEvent) {
+      await tx
+        .update(externalCalendarEvents)
+        .set({ status: "CANCELLED", updatedAt: now })
+        .where(eq(externalCalendarEvents.id, extEvent.external_calendar_events.id));
+    }
+
+    return {
+      cancelled: cancelled ?? null,
+      externalSync: extEvent
+        ? {
+            accessToken: extEvent.calendar_connections.accessToken,
+            calendarId: extEvent.calendar_connections.calendarId,
+            eventId: extEvent.external_calendar_events.externalEventId,
+          }
+        : null,
+    };
   });
+
+  if (!result || !result.cancelled) return null;
+
+  // Remoção no Google Calendar fora da transação principal
+  if (result.externalSync) {
+    try {
+      await deleteGoogleCalendarEvent({
+        accessToken: result.externalSync.accessToken,
+        calendarId: result.externalSync.calendarId,
+        eventId: result.externalSync.eventId,
+      });
+    } catch (err) {
+      console.warn("[cancelBooking] Falha ao remover evento no Google Calendar:", err);
+    }
+  }
+
+  return result.cancelled;
 }

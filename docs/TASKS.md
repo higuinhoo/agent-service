@@ -2,33 +2,33 @@
 
 Atualizado em: 2026-09-29
 
-## ATIVA — T-006: agenda local (Fase 4)
+## ATIVA — T-007: integração Google Calendar (Fase 5)
 
-Objetivo: gerenciar serviços, profissionais/recursos, disponibilidade recorrente, bloqueios de horário e holds temporários sem sobreposição.
+Objetivo: integrar com Google Calendar via OAuth, sincronizar disponibilidade (FreeBusy) e criar/compensar eventos sem divergência com a agenda local.
 
-- [x] CRUD operacional de serviços (`services`) com edição e desativação segura;
-- [x] CRUD operacional de profissionais/recursos (`resources`) com edição e desativação segura;
-- [x] Regras de disponibilidade recorrente e exceções — criação, listagem e remoção;
-- [x] Holds temporários com expiração transacional e limpeza periódica pelo worker;
-- [x] Criação, confirmação, cancelamento e reagendamento transacional de agendamentos;
-- [x] Restrição estrita de banco contra sobreposição de horários (anti-double booking);
-- [x] Visualização de agenda no painel (visão diária e semanal);
-- [x] Ferramentas do agente IA para listar serviços, consultar slots, criar hold e confirmar agendamento;
-- [x] Testes automatizados — 24 testes unitários/contrato e 5 testes de integração concorrente com PostgreSQL real passando.
+- [x] Schema e tabelas `calendar_connections` e `external_calendar_events`;
+- [x] Conexão OAuth 2.0 (início de fluxo, callback e renovação de tokens);
+- [x] Consulta de disponibilidade externa (Google Calendar FreeBusy);
+- [x] Criação, atualização e cancelamento de eventos externos com idempotência e compensação de falha;
+- [x] Integração da verificação FreeBusy na geração de slots da agenda;
+- [x] Interface no painel da agenda para conectar/desconectar calendário por profissional;
+- [x] Testes automatizados de contrato, adapter, FreeBusy e compensação de erro.
 
 Critério de conclusão:
 
-- Dois pedidos simultâneos não conseguem confirmar o mesmo recurso e horário;
-- Holds expiram automaticamente liberando o slot;
+- A IA só confirma após o calendário externo confirmar ou agenda local independente com registro visível;
+- Falhas externas não geram confirmação falsa e liberam/expiram o hold;
 - Testes automatizados passando.
 
 ## Próximas
 
-### T-007: integração Google Calendar (Fase 5)
+### T-008: operação para piloto (Fase 6)
 
-Conexão OAuth, seleção de calendário, consulta de períodos ocupados (FreeBusy), criação e compensação de falha.
+Painel administrativo de saúde, fila de falhas, políticas de retenção, backup/restauração e deploy piloto.
 
 ## Concluídas
+
+- [x] T-006 — agenda local (Fase 4: serviços, recursos, disponibilidade recorrente, exceções/bloqueios, holds temporários com expiração, anti-double booking via advisory lock e exclusion constraint, visualização diária/semanal, tools de IA e 29/29 testes passando com PostgreSQL 16 real).
 
 - [x] T-005 — controle humano e runtime do agente IA (Fase 3: transições de estado, proteção atômica pré-envio contra corrida com intervenção humana, ferramentas permitidas, handoff para humano via tool ou dashboard D-004, devolução manual à IA D-005, persistência de runs e tool calls, UI de configuração do agente e 14/14 testes passando).
 - [x] T-004 — integração WAHA e persistência de conversas (Fase 2: webhook HMAC no corpo bruto, resolução de tenant por sessão confiável, deduplicação com idempotência, detecção de intervenção humana D-004, processamento de ACKs, outbox com verificação atômica pré-envio, UI de conversas, chat e pareamento WhatsApp).

@@ -14,10 +14,12 @@ import {
   updateResourceAction,
   updateServiceAction,
 } from "@/lib/actions/scheduling";
+import { disconnectCalendarAction, testCalendarSyncAction } from "@/lib/actions/calendar";
 import {
   getAvailabilityExceptionsByOrg,
   getAvailabilityRulesByOrg,
   getBookingsByRange,
+  getCalendarConnectionsByOrg,
   getOrganizationById,
   getResourcesByOrg,
   getResourceServicesByOrg,
@@ -51,16 +53,31 @@ export default async function SchedulePage({
   const until = selectedView === "day" ? addDays(now, 1) : addDays(now, 7);
   const canManage = user.role === "admin" || user.role === "supervisor";
 
-  const [organization, services, resources, assignments, rules, exceptions, appointments] =
-    await Promise.all([
-      getOrganizationById(user.organizationId),
-      getServicesByOrg(user.organizationId),
-      getResourcesByOrg(user.organizationId),
-      getResourceServicesByOrg(user.organizationId),
-      getAvailabilityRulesByOrg(user.organizationId),
-      getAvailabilityExceptionsByOrg(user.organizationId, now),
-      getBookingsByRange(user.organizationId, now, until),
-    ]);
+  const [
+    organization,
+    services,
+    resources,
+    assignments,
+    rules,
+    exceptions,
+    appointments,
+    calendarConnections,
+  ] = await Promise.all([
+    getOrganizationById(user.organizationId),
+    getServicesByOrg(user.organizationId),
+    getResourcesByOrg(user.organizationId),
+    getResourceServicesByOrg(user.organizationId),
+    getAvailabilityRulesByOrg(user.organizationId),
+    getAvailabilityExceptionsByOrg(user.organizationId, now),
+    getBookingsByRange(user.organizationId, now, until),
+    getCalendarConnectionsByOrg(user.organizationId),
+  ]);
+
+  const calendarMap = new Map(
+    calendarConnections
+      .filter((conn) => conn.resourceId !== null)
+      .map((conn) => [conn.resourceId as string, conn]),
+  );
 
   const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
     timeZone: organization?.timezone ?? "America/Sao_Paulo",
@@ -131,6 +148,18 @@ export default async function SchedulePage({
   async function handleDeleteException(exceptionId: string) {
     "use server";
     await deleteAvailabilityExceptionAction(exceptionId);
+  }
+
+  async function handleDisconnectCalendar(resourceId: string) {
+    "use server";
+    const result = await disconnectCalendarAction(resourceId);
+    if (result.error) redirect(`/dashboard/schedule?error=${encodeURIComponent(result.error)}`);
+  }
+
+  async function handleTestSyncCalendar(resourceId: string) {
+    "use server";
+    const result = await testCalendarSyncAction(resourceId);
+    if (result.error) redirect(`/dashboard/schedule?error=${encodeURIComponent(result.error)}`);
   }
 
   return (
@@ -483,6 +512,90 @@ export default async function SchedulePage({
                   ) : null}
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-zinc-900 dark:text-zinc-100">Google Calendar</h2>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Sincronização bidirecional de disponibilidade e eventos com a agenda do Google.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 divide-y divide-zinc-100 dark:divide-zinc-800">
+              {resources.length === 0 ? (
+                <p className="py-2 text-xs text-zinc-400">Nenhum responsável cadastrado.</p>
+              ) : (
+                resources.map((resource) => {
+                  const conn = calendarMap.get(resource.id);
+                  return (
+                    <div
+                      key={resource.id}
+                      className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
+                    >
+                      <div>
+                        <p className="font-medium text-zinc-900 dark:text-zinc-100">
+                          {resource.name}
+                        </p>
+                        {conn ? (
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                            {conn.accountEmail} · Calendário: {conn.calendarName} ·{" "}
+                            <span
+                              className={
+                                conn.syncStatus === "CONNECTED"
+                                  ? "font-medium text-emerald-600 dark:text-emerald-400"
+                                  : "font-medium text-amber-600 dark:text-amber-400"
+                              }
+                            >
+                              {conn.syncStatus === "CONNECTED"
+                                ? "Conectado"
+                                : "Erro de sincronização"}
+                            </span>
+                            {conn.lastError ? ` (${conn.lastError})` : ""}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-zinc-400">
+                            Nenhum calendário Google conectado
+                          </p>
+                        )}
+                      </div>
+                      {canManage ? (
+                        <div className="flex items-center gap-2">
+                          {conn ? (
+                            <>
+                              <form action={handleTestSyncCalendar.bind(null, resource.id)}>
+                                <button
+                                  type="submit"
+                                  className="rounded-md border border-zinc-200 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                                >
+                                  Testar
+                                </button>
+                              </form>
+                              <form action={handleDisconnectCalendar.bind(null, resource.id)}>
+                                <button
+                                  type="submit"
+                                  className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
+                                >
+                                  Desconectar
+                                </button>
+                              </form>
+                            </>
+                          ) : (
+                            <a
+                              href={`/api/calendar/google/auth?resourceId=${resource.id}`}
+                              className="rounded-md bg-zinc-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200"
+                            >
+                              Conectar Google
+                            </a>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </section>
         </div>

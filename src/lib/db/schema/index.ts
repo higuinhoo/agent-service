@@ -52,6 +52,16 @@ export const bookingStatusEnum = pgEnum("booking_status", [
   "COMPLETED",
   "NO_SHOW",
 ]);
+export const calendarSyncStatusEnum = pgEnum("calendar_sync_status", [
+  "CONNECTED",
+  "SYNC_ERROR",
+  "DISCONNECTED",
+]);
+export const externalCalendarEventStatusEnum = pgEnum("external_calendar_event_status", [
+  "SYNCED",
+  "FAILED",
+  "CANCELLED",
+]);
 
 // ─── Organizations (tenants) ──────────────────────────────────────────────────
 
@@ -411,6 +421,68 @@ export const bookings = pgTable(
   ],
 );
 
+// ─── Google Calendar Integration ─────────────────────────────────────────────
+
+export const calendarConnections = pgTable(
+  "calendar_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    resourceId: uuid("resource_id").references(() => resources.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull().default("google"),
+    accountEmail: text("account_email").notNull(),
+    calendarId: text("calendar_id").notNull().default("primary"),
+    calendarName: text("calendar_name").notNull().default("Principal"),
+    accessToken: text("access_token").notNull(),
+    refreshToken: text("refresh_token").notNull(),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    isActive: boolean("is_active").notNull().default(true),
+    syncStatus: calendarSyncStatusEnum("sync_status").notNull().default("CONNECTED"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("calendar_connections_org_resource_unique").on(
+      table.organizationId,
+      table.resourceId,
+    ),
+    index("calendar_connections_org_idx").on(table.organizationId),
+  ],
+);
+
+export const externalCalendarEvents = pgTable(
+  "external_calendar_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    bookingId: uuid("booking_id")
+      .notNull()
+      .references(() => bookings.id, { onDelete: "cascade" }),
+    connectionId: uuid("connection_id")
+      .notNull()
+      .references(() => calendarConnections.id, { onDelete: "cascade" }),
+    externalEventId: text("external_event_id").notNull(),
+    status: externalCalendarEventStatusEnum("status").notNull().default("SYNCED"),
+    etag: text("etag"),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("external_calendar_events_booking_unique").on(
+      table.organizationId,
+      table.bookingId,
+    ),
+    index("external_calendar_events_conn_idx").on(table.connectionId, table.externalEventId),
+  ],
+);
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 
 export const organizationRelations = relations(organizations, ({ many, one }) => ({
@@ -424,6 +496,8 @@ export const organizationRelations = relations(organizations, ({ many, one }) =>
   availabilityExceptions: many(availabilityExceptions),
   bookingHolds: many(bookingHolds),
   bookings: many(bookings),
+  calendarConnections: many(calendarConnections),
+  externalCalendarEvents: many(externalCalendarEvents),
   agentConfig: one(agentConfigs, {
     fields: [organizations.id],
     references: [agentConfigs.organizationId],
@@ -534,6 +608,10 @@ export const resourceRelations = relations(resources, ({ one, many }) => ({
   availabilityExceptions: many(availabilityExceptions),
   holds: many(bookingHolds),
   bookings: many(bookings),
+  calendarConnection: one(calendarConnections, {
+    fields: [resources.id],
+    references: [calendarConnections.resourceId],
+  }),
 }));
 
 export const resourceServiceRelations = relations(resourceServices, ({ one }) => ({
@@ -592,4 +670,35 @@ export const bookingRelations = relations(bookings, ({ one }) => ({
   service: one(services, { fields: [bookings.serviceId], references: [services.id] }),
   contact: one(contacts, { fields: [bookings.contactId], references: [contacts.id] }),
   hold: one(bookingHolds, { fields: [bookings.holdId], references: [bookingHolds.id] }),
+  externalCalendarEvent: one(externalCalendarEvents, {
+    fields: [bookings.id],
+    references: [externalCalendarEvents.bookingId],
+  }),
+}));
+
+export const calendarConnectionRelations = relations(calendarConnections, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [calendarConnections.organizationId],
+    references: [organizations.id],
+  }),
+  resource: one(resources, {
+    fields: [calendarConnections.resourceId],
+    references: [resources.id],
+  }),
+  events: many(externalCalendarEvents),
+}));
+
+export const externalCalendarEventRelations = relations(externalCalendarEvents, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [externalCalendarEvents.organizationId],
+    references: [organizations.id],
+  }),
+  booking: one(bookings, {
+    fields: [externalCalendarEvents.bookingId],
+    references: [bookings.id],
+  }),
+  connection: one(calendarConnections, {
+    fields: [externalCalendarEvents.connectionId],
+    references: [calendarConnections.id],
+  }),
 }));

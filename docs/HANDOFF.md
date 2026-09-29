@@ -4,36 +4,31 @@ Atualizado em: 2026-09-29
 
 ## Objetivo
 
-Continuar T-006 e concluir a agenda local sem ampliar o escopo do MVP.
+Fase 5 (Google Calendar) concluída. Avançar para Fase 6 (Operação para Piloto — resiliência, Docker com volumes reais, saúde e políticas operacionais).
 
 ## Mudanças
 
-- Schema e migration inicial para serviços, recursos, disponibilidades, exceções, holds e agendamentos;
-- proteção de sobreposição com advisory lock, exclusion constraints e chaves idempotentes;
-- casos de uso para criar/expirar hold, confirmar e cancelar agendamento;
-- conversão de horário local usando o fuso configurado da empresa;
-- painel `/dashboard/schedule` com cadastros básicos e visões de hoje/7 dias;
-- ferramentas da IA para listar serviços, criar hold e confirmar após consentimento explícito;
-- ferramenta `find_available_slots` com filtros de disponibilidade e ocupação;
-- limpeza periódica de holds pelo worker/pg-boss;
-- edição e desativação de serviços/recursos;
-- cancelamento e reagendamento transacional, com ferramentas restritas para a IA;
-- guard transacional de `control_version` impede ferramentas da IA após intervenção humana;
-- configuração do middleware separada da autenticação com banco;
-- removida a pasta vazia `app/` que ocultava `src/app` e fazia o sistema responder somente 404.
+- Schema e migration `0001_light_loners.sql` para `calendar_connections` e `external_calendar_events` com enums de status;
+- Cliente Google Calendar (`src/lib/calendar/google.ts`) para OAuth 2.0, renovação automática de access token expirado, FreeBusy e CRUD de eventos;
+- Consulta de slots disponíveis (`findAvailableSlots`) unificada com o FreeBusy do Google Calendar por profissional;
+- Confirmação transacional vinculada (`confirmBookingFromHold`): o evento externo é gerado com requestId idempotente, gravado em `external_calendar_events`, e qualquer falha externa libera/expira o hold impedindo confirmação falsa;
+- Compensação atômica em caso de rollback local e exclusão externa na ação de cancelamento (`cancelBooking`);
+- Endpoints de autenticação OAuth `/api/calendar/google/auth` e `/api/calendar/google/callback` com validação de tenant no state;
+- Interface no painel da agenda (`/dashboard/schedule`) com listagem de status por responsável, botões de teste de sincronização, conexão e desconexão;
+- Suíte de 7 novos testes automatizados cobrindo OAuth, FreeBusy, criação idempotente e remoção.
 
 ## Verificação
 
-- `pnpm check` verde: 24 testes unitários/contrato passando;
-- `RUN_DATABASE_TESTS=1` verde: 5 testes de integração com PostgreSQL 16 real executados e aprovados com 100% de sucesso (concorrência, expiração, isolamento de tenant, reagendamento e bloqueio pós-intervenção humana);
-- `pnpm build` verde: build de produção do Next.js 15 gerou todas as 14 rotas sem falhas;
-- Migration `0000_fat_young_avengers.sql` aplicada com sucesso e corrigida contra erro de coerção entre os enums `booking_hold_status` e `booking_status`.
+- `pnpm check` verde: lint ✅ format ✅ typecheck ✅ 31 testes unitários/contrato passando;
+- `RUN_DATABASE_TESTS=1` verde: 36 testes passando no total com PostgreSQL 16 real;
+- `pnpm build` verde: build de produção do Next.js gerou todas as 16 rotas sem erros;
+- Migrations `0000` e `0001` aplicadas com sucesso no banco de dados local.
 
 ## Riscos
 
-- O Docker Desktop no Windows requer 1 a 2 minutos para inicializar completamente o subsistema WSL2 e o pipe nomeado `\\.\pipe\docker_cli`;
-- Integração OAuth com Google Calendar (Fase 5) precisará de credenciais e gerenciamento seguro de tokens por organização.
+- Variáveis de ambiente `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` precisam ser provisionadas no console do Google Cloud para uso em ambiente de produção;
+- A fila do pg-boss no worker deve ser mantida em execução contínua para limpeza de holds e envio de outbox.
 
 ## Próximo passo único
 
-Iniciar T-007: integração com Google Calendar (Fase 5: fluxo OAuth, tokens por organização, sincronização FreeBusy e criação de eventos).
+Iniciar T-008 (Fase 6 — Operação para Piloto): painel de saúde e observabilidade, políticas de retenção, backup/restauração e deploy piloto com Docker Compose.

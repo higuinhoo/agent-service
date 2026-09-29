@@ -15,6 +15,8 @@ import {
   availabilityRules,
   availabilityExceptions,
   bookings,
+  calendarConnections,
+  externalCalendarEvents,
 } from "@/lib/db/schema/index";
 import { eq, and, desc, asc, gt, lte } from "drizzle-orm";
 
@@ -418,4 +420,199 @@ export async function getBookingsByRange(organizationId: string, from: Date, unt
       ),
     )
     .orderBy(asc(bookings.startsAt));
+}
+
+// ─── Google Calendar Queries ──────────────────────────────────────────────────
+
+export async function getCalendarConnectionsByOrg(organizationId: string) {
+  return db
+    .select({
+      id: calendarConnections.id,
+      organizationId: calendarConnections.organizationId,
+      resourceId: calendarConnections.resourceId,
+      resourceName: resources.name,
+      provider: calendarConnections.provider,
+      accountEmail: calendarConnections.accountEmail,
+      calendarId: calendarConnections.calendarId,
+      calendarName: calendarConnections.calendarName,
+      isActive: calendarConnections.isActive,
+      syncStatus: calendarConnections.syncStatus,
+      lastSyncedAt: calendarConnections.lastSyncedAt,
+      lastError: calendarConnections.lastError,
+      updatedAt: calendarConnections.updatedAt,
+    })
+    .from(calendarConnections)
+    .leftJoin(
+      resources,
+      and(
+        eq(calendarConnections.resourceId, resources.id),
+        eq(calendarConnections.organizationId, resources.organizationId),
+      ),
+    )
+    .where(eq(calendarConnections.organizationId, organizationId))
+    .orderBy(desc(calendarConnections.updatedAt));
+}
+
+export async function getCalendarConnectionByResource(organizationId: string, resourceId: string) {
+  const [conn] = await db
+    .select()
+    .from(calendarConnections)
+    .where(
+      and(
+        eq(calendarConnections.organizationId, organizationId),
+        eq(calendarConnections.resourceId, resourceId),
+        eq(calendarConnections.isActive, true),
+      ),
+    )
+    .limit(1);
+  return conn ?? null;
+}
+
+export async function upsertCalendarConnection(data: {
+  organizationId: string;
+  resourceId: string;
+  provider?: string;
+  accountEmail: string;
+  calendarId?: string;
+  calendarName?: string;
+  accessToken: string;
+  refreshToken: string;
+  tokenExpiresAt?: Date;
+}) {
+  const [upserted] = await db
+    .insert(calendarConnections)
+    .values({
+      organizationId: data.organizationId,
+      resourceId: data.resourceId,
+      provider: data.provider ?? "google",
+      accountEmail: data.accountEmail,
+      calendarId: data.calendarId ?? "primary",
+      calendarName: data.calendarName ?? "Principal",
+      accessToken: data.accessToken,
+      refreshToken: data.refreshToken,
+      ...(data.tokenExpiresAt ? { tokenExpiresAt: data.tokenExpiresAt } : {}),
+      syncStatus: "CONNECTED",
+      lastSyncedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [calendarConnections.organizationId, calendarConnections.resourceId],
+      set: {
+        accountEmail: data.accountEmail,
+        calendarId: data.calendarId ?? "primary",
+        calendarName: data.calendarName ?? "Principal",
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken,
+        ...(data.tokenExpiresAt ? { tokenExpiresAt: data.tokenExpiresAt } : {}),
+        syncStatus: "CONNECTED",
+        lastSyncedAt: new Date(),
+        lastError: null,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  return upserted;
+}
+
+export async function deleteCalendarConnection(organizationId: string, connectionId: string) {
+  const [deleted] = await db
+    .delete(calendarConnections)
+    .where(
+      and(
+        eq(calendarConnections.id, connectionId),
+        eq(calendarConnections.organizationId, organizationId),
+      ),
+    )
+    .returning({ id: calendarConnections.id });
+  return deleted ?? null;
+}
+
+export async function updateCalendarConnectionTokens(
+  organizationId: string,
+  connectionId: string,
+  data: {
+    accessToken: string;
+    tokenExpiresAt?: Date;
+    syncStatus?: "CONNECTED" | "SYNC_ERROR";
+    lastError?: string | null;
+  },
+) {
+  const [updated] = await db
+    .update(calendarConnections)
+    .set({
+      accessToken: data.accessToken,
+      ...(data.tokenExpiresAt ? { tokenExpiresAt: data.tokenExpiresAt } : {}),
+      ...(data.syncStatus ? { syncStatus: data.syncStatus } : {}),
+      ...(data.lastError !== undefined ? { lastError: data.lastError } : {}),
+      lastSyncedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(calendarConnections.id, connectionId),
+        eq(calendarConnections.organizationId, organizationId),
+      ),
+    )
+    .returning();
+  return updated ?? null;
+}
+
+export async function getExternalCalendarEventByBooking(organizationId: string, bookingId: string) {
+  const [event] = await db
+    .select()
+    .from(externalCalendarEvents)
+    .where(
+      and(
+        eq(externalCalendarEvents.organizationId, organizationId),
+        eq(externalCalendarEvents.bookingId, bookingId),
+      ),
+    )
+    .limit(1);
+  return event ?? null;
+}
+
+export async function createExternalCalendarEvent(data: {
+  organizationId: string;
+  bookingId: string;
+  connectionId: string;
+  externalEventId: string;
+  status?: "SYNCED" | "FAILED" | "CANCELLED";
+  etag?: string;
+  lastError?: string;
+}) {
+  const [created] = await db
+    .insert(externalCalendarEvents)
+    .values({
+      organizationId: data.organizationId,
+      bookingId: data.bookingId,
+      connectionId: data.connectionId,
+      externalEventId: data.externalEventId,
+      ...(data.status ? { status: data.status } : {}),
+      ...(data.etag ? { etag: data.etag } : {}),
+      ...(data.lastError ? { lastError: data.lastError } : {}),
+    })
+    .returning();
+  return created;
+}
+
+export async function updateExternalCalendarEventStatus(
+  organizationId: string,
+  eventId: string,
+  status: "SYNCED" | "FAILED" | "CANCELLED",
+  lastError?: string | null,
+) {
+  const [updated] = await db
+    .update(externalCalendarEvents)
+    .set({
+      status,
+      ...(lastError !== undefined ? { lastError } : {}),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(externalCalendarEvents.id, eventId),
+        eq(externalCalendarEvents.organizationId, organizationId),
+      ),
+    )
+    .returning();
+  return updated ?? null;
 }
