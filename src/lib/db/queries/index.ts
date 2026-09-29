@@ -9,8 +9,14 @@ import {
   agentConfigs,
   agentRuns,
   toolCalls,
+  services,
+  resources,
+  resourceServices,
+  availabilityRules,
+  availabilityExceptions,
+  bookings,
 } from "@/lib/db/schema/index";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { eq, and, desc, asc, gt, lte } from "drizzle-orm";
 
 // Todas as queries garantem filtro por organizationId — nunca retornam dados de outro tenant
 
@@ -278,4 +284,138 @@ export async function recordToolCall(data: {
     })
     .returning();
   return tool;
+}
+
+// ─── Agenda local ────────────────────────────────────────────────────────────
+
+export async function getServicesByOrg(organizationId: string) {
+  return db
+    .select()
+    .from(services)
+    .where(eq(services.organizationId, organizationId))
+    .orderBy(asc(services.name));
+}
+
+export async function getResourcesByOrg(organizationId: string) {
+  return db
+    .select()
+    .from(resources)
+    .where(eq(resources.organizationId, organizationId))
+    .orderBy(asc(resources.name));
+}
+
+export async function getResourceServicesByOrg(organizationId: string) {
+  return db
+    .select({
+      resourceId: resourceServices.resourceId,
+      resourceName: resources.name,
+      resourceIsActive: resources.isActive,
+      serviceId: resourceServices.serviceId,
+      serviceName: services.name,
+      serviceIsActive: services.isActive,
+    })
+    .from(resourceServices)
+    .innerJoin(
+      resources,
+      and(
+        eq(resourceServices.resourceId, resources.id),
+        eq(resourceServices.organizationId, resources.organizationId),
+      ),
+    )
+    .innerJoin(
+      services,
+      and(
+        eq(resourceServices.serviceId, services.id),
+        eq(resourceServices.organizationId, services.organizationId),
+      ),
+    )
+    .where(eq(resourceServices.organizationId, organizationId))
+    .orderBy(asc(resources.name), asc(services.name));
+}
+
+export async function getAvailabilityRulesByOrg(organizationId: string) {
+  return db
+    .select({
+      id: availabilityRules.id,
+      resourceId: availabilityRules.resourceId,
+      resourceName: resources.name,
+      weekday: availabilityRules.weekday,
+      startTime: availabilityRules.startTime,
+      endTime: availabilityRules.endTime,
+      isActive: availabilityRules.isActive,
+    })
+    .from(availabilityRules)
+    .innerJoin(
+      resources,
+      and(
+        eq(availabilityRules.resourceId, resources.id),
+        eq(availabilityRules.organizationId, resources.organizationId),
+      ),
+    )
+    .where(eq(availabilityRules.organizationId, organizationId))
+    .orderBy(asc(availabilityRules.weekday), asc(availabilityRules.startTime));
+}
+
+export async function getAvailabilityExceptionsByOrg(organizationId: string, from = new Date()) {
+  return db
+    .select({
+      id: availabilityExceptions.id,
+      resourceName: resources.name,
+      kind: availabilityExceptions.kind,
+      startsAt: availabilityExceptions.startsAt,
+      endsAt: availabilityExceptions.endsAt,
+      reason: availabilityExceptions.reason,
+    })
+    .from(availabilityExceptions)
+    .innerJoin(
+      resources,
+      and(
+        eq(availabilityExceptions.resourceId, resources.id),
+        eq(availabilityExceptions.organizationId, resources.organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(availabilityExceptions.organizationId, organizationId),
+        gt(availabilityExceptions.endsAt, from),
+      ),
+    )
+    .orderBy(asc(availabilityExceptions.startsAt));
+}
+
+export async function getBookingsByRange(organizationId: string, from: Date, until: Date) {
+  return db
+    .select({
+      id: bookings.id,
+      resourceName: resources.name,
+      serviceName: services.name,
+      customerName: bookings.customerName,
+      customerPhone: bookings.customerPhone,
+      startsAt: bookings.startsAt,
+      endsAt: bookings.endsAt,
+      status: bookings.status,
+    })
+    .from(bookings)
+    .innerJoin(
+      resources,
+      and(
+        eq(bookings.resourceId, resources.id),
+        eq(bookings.organizationId, resources.organizationId),
+      ),
+    )
+    .innerJoin(
+      services,
+      and(
+        eq(bookings.serviceId, services.id),
+        eq(bookings.organizationId, services.organizationId),
+      ),
+    )
+    .where(
+      and(
+        eq(bookings.organizationId, organizationId),
+        gt(bookings.endsAt, from),
+        lte(bookings.startsAt, until),
+      ),
+    )
+    .orderBy(asc(bookings.startsAt));
 }

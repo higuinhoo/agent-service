@@ -37,6 +37,7 @@ export async function getQueue(): Promise<PgBoss> {
 export const QUEUES = {
   PROCESS_INBOUND: "process-inbound-message",
   SEND_OUTBOUND: "send-outbound-message",
+  EXPIRE_BOOKING_HOLDS: "expire-booking-holds",
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

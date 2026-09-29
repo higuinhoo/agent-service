@@ -1,3 +1,7 @@
+---
+description: Registrar um handoff curto e verificável antes de trocar de agente.
+---
+
 # Preparar handoff do projeto
 
 Prepare a troca para outro agente sem iniciar trabalho novo.

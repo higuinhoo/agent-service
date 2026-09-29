@@ -1,20 +1,20 @@
 # Tarefas
 
-Atualizado em: 2026-09-28
+Atualizado em: 2026-09-29
 
 ## ATIVA — T-006: agenda local (Fase 4)
 
 Objetivo: gerenciar serviços, profissionais/recursos, disponibilidade recorrente, bloqueios de horário e holds temporários sem sobreposição.
 
-- [ ] Tabela e CRUD de serviços (`services`);
-- [ ] Tabela e CRUD de profissionais/recursos (`resources`);
-- [ ] Regras de disponibilidade recorrente (`availability_rules`) e exceções/bloqueios (`availability_exceptions`);
-- [ ] Holds temporários com expiração para garantir reserva segura durante o atendimento (`booking_holds`);
-- [ ] Criação, confirmação, reagendamento e cancelamento de agendamentos (`bookings`);
-- [ ] Restrição estrita de banco contra sobreposição de horários (anti-double booking);
-- [ ] Visualização de agenda no painel (visão diária e semanal);
-- [ ] Ferramentas do agente IA para consultar disponibilidade e criar holds/agendamentos;
-- [ ] Testes automatizados de concorrência e sobreposição.
+- [x] CRUD operacional de serviços (`services`) com edição e desativação segura;
+- [x] CRUD operacional de profissionais/recursos (`resources`) com edição e desativação segura;
+- [x] Regras de disponibilidade recorrente e exceções — criação, listagem e remoção;
+- [x] Holds temporários com expiração transacional e limpeza periódica pelo worker;
+- [x] Criação, confirmação, cancelamento e reagendamento transacional de agendamentos;
+- [x] Restrição estrita de banco contra sobreposição de horários (anti-double booking);
+- [x] Visualização de agenda no painel (visão diária e semanal);
+- [x] Ferramentas do agente IA para listar serviços, consultar slots, criar hold e confirmar agendamento;
+- [ ] Testes automatizados — unitários e contrato SQL prontos; integração concorrente com PostgreSQL pendente.
 
 Critério de conclusão:
 

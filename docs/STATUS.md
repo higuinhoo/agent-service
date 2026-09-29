@@ -1,16 +1,16 @@
 # Estado atual
 
-Atualizado em: 2026-09-28
+Atualizado em: 2026-09-29
 
 ## Fase
 
-Fase 3 concluída — T-005 (Controle humano e runtime do agente IA) concluída. ATIVA: T-006 (Fase 4: agenda local).
+Fase 4 em andamento — fundação transacional e painel inicial da agenda local implementados. ATIVA: T-006.
 
 ## O que existe
 
 - escopo, arquitetura, roadmap e decisões documentados (D-001–D-013 aprovadas);
 - scaffold Next.js 15 (App Router) + TypeScript estrito + Tailwind CSS;
-- schema Drizzle completo: organizations, users, contacts, conversations, messages, webhook_events, audit_logs, agent_configs, agent_runs, tool_calls;
+- schema Drizzle multiempresa incluindo atendimento, IA e agenda local;
 - autenticação NextAuth.js v5 (credentials + JWT, isolamento por organization_id, bloqueio de organizações suspensas);
 - integração WAHA robusta:
   - cliente HTTP com suporte a sessões, status, QR Code e envio de texto;
@@ -22,7 +22,7 @@ Fase 3 concluída — T-005 (Controle humano e runtime do agente IA) concluída.
   - outbox durável no worker com verificação atômica pré-envio contra corrida com atendente;
 - runtime do agente IA & controle de atendimento:
   - ciclo de turnos com loop de tool calling (`executeAgentTurn`);
-  - ferramentas seguras iniciais (`get_company_info`, `list_services`, `request_human_support`);
+  - ferramentas seguras para informações, serviços, holds, confirmação de agendamento e handoff humano;
   - proteção atômica pré-envio: descarte de respostas geradas se o atendente assumir durante a inferência;
   - handoff para humano via ferramenta ou botão no painel (D-004);
   - devolução manual para a IA (D-005);
@@ -36,12 +36,21 @@ Fase 3 concluída — T-005 (Controle humano e runtime do agente IA) concluída.
   - tela de chat em tempo real com histórico, envio de resposta manual e botões de alternância Humano/IA;
   - módulo de pareamento e gerenciamento de sessão WhatsApp (QR Code e status);
   - módulo de configuração estruturada e versionada do Agente IA;
+  - módulo de agenda com serviços, responsáveis, disponibilidade, exceções e visões diária/semanal;
   - trilha de auditoria;
-- testes automatizados passando (14/14 testes no Vitest: isolamento multiempresa, WAHA e runtime de IA);
+- agenda local com idempotência, fuso explícito, lock transacional, constraints de exclusão e isolamento por `organization_id`;
+- consulta de slots considera duração, disponibilidade recorrente, exceções, bloqueios, agendamentos e holds ativos;
+- worker agenda limpeza de holds expirados a cada minuto;
+- serviços e responsáveis podem ser criados, editados e desativados sem apagar histórico;
+- regras de disponibilidade e exceções podem ser criadas, listadas e removidas pelo painel;
+- cancelamento e reagendamento usam transação e hold prévio;
+- ferramentas de agenda da IA bloqueiam a conversa na transação e validam `control_version`, preservando a prioridade humana;
+- testes automatizados passando (24 testes; 5 testes PostgreSQL opt-in aguardam ambiente);
 - `pnpm check` 100% verde: lint ✅ format ✅ typecheck ✅ tests ✅.
+- build de produção validado com todas as rotas do App Router, incluindo `/dashboard/schedule`.
 
 ## O que não existe
 
-- agendamento e disponibilidade local (Fase 4);
+- teste de concorrência contra PostgreSQL real e aplicação da migration em banco descartável;
 - integração com Google Calendar (Fase 5);
 - piloto em produção com Docker e volumes reais (Fase 6).

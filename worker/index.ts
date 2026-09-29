@@ -2,6 +2,7 @@ import { getQueue, QUEUES } from "@/lib/queue";
 import type PgBoss from "pg-boss";
 import { processOutboundMessage, type OutboundJobPayload } from "@/lib/waha/outbox";
 import { executeAgentTurn } from "@/lib/ai/runtime";
+import { expireAllBookingHolds } from "@/lib/scheduling";
 
 // ─── Payload types ────────────────────────────────────────────────────────────
 
@@ -59,6 +60,11 @@ async function handleSendOutbound(jobs: PgBoss.Job<OutboundJobPayload>[]): Promi
   }
 }
 
+async function handleExpireBookingHolds(): Promise<void> {
+  const expired = await expireAllBookingHolds();
+  if (expired.length > 0) console.info(`[worker] expired booking holds: count=${expired.length}`);
+}
+
 // ─── Bootstrap do worker ──────────────────────────────────────────────────────
 
 async function startWorker(): Promise<void> {
@@ -67,8 +73,16 @@ async function startWorker(): Promise<void> {
 
   await boss.work<InboundMessageJob>(QUEUES.PROCESS_INBOUND, handleInboundMessage);
   await boss.work<OutboundJobPayload>(QUEUES.SEND_OUTBOUND, handleSendOutbound);
+  await boss.work(QUEUES.EXPIRE_BOOKING_HOLDS, handleExpireBookingHolds);
+  await boss.schedule(QUEUES.EXPIRE_BOOKING_HOLDS, "* * * * *");
+  await handleExpireBookingHolds();
 
-  console.info("[worker] listening on queues:", QUEUES.PROCESS_INBOUND, QUEUES.SEND_OUTBOUND);
+  console.info(
+    "[worker] listening on queues:",
+    QUEUES.PROCESS_INBOUND,
+    QUEUES.SEND_OUTBOUND,
+    QUEUES.EXPIRE_BOOKING_HOLDS,
+  );
 
   // Graceful shutdown
   const shutdown = async (): Promise<void> => {

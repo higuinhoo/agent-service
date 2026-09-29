@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { compare } from "bcryptjs";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit";
+import { authConfig } from "./config";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -21,6 +22,7 @@ interface AuthUser {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   providers: [
     Credentials({
       async authorize(credentials): Promise<AuthUser | null> {
@@ -86,8 +88,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-  pages: {
-    signIn: "/login",
-  },
-  session: { strategy: "jwt" },
 });

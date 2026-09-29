@@ -1,3 +1,7 @@
+---
+description: Continuar a tarefa ativa carregando apenas o contexto necessário.
+---
+
 # Continuar o projeto
 
 1. Execute `pwsh scripts/project-status.ps1`.
