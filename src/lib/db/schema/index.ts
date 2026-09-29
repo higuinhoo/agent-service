@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -18,6 +18,9 @@ export const organizations = pgTable("organizations", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   wahaSession: text("waha_session"),
+  suspended: boolean("suspended").notNull().default(false),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
+  suspendedReason: text("suspended_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -46,7 +49,7 @@ export const contacts = pgTable("contacts", {
     .notNull()
     .references(() => organizations.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  phone: text("phone").notNull(), // Formato E.164 internacional
+  phone: text("phone").notNull(),
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -62,9 +65,11 @@ export const conversations = pgTable("conversations", {
   contactId: uuid("contact_id")
     .notNull()
     .references(() => contacts.id, { onDelete: "cascade" }),
-  assignedToId: uuid("assigned_to_id").references(() => users.id, { onDelete: "set null" }),
+  assignedToId: uuid("assigned_to_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   status: conversationStatusEnum("status").notNull().default("OPEN"),
-  controlVersion: text("control_version").notNull().default("0"), // D-004: controle de concorrência
+  controlVersion: text("control_version").notNull().default("0"),
   wahaSessionId: text("waha_session_id"),
   lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -81,11 +86,31 @@ export const messages = pgTable("messages", {
   conversationId: uuid("conversation_id")
     .notNull()
     .references(() => conversations.id, { onDelete: "cascade" }),
-  wahaMessageId: text("waha_message_id").unique(), // Idempotência
+  wahaMessageId: text("waha_message_id").unique(),
   direction: text("direction", { enum: ["INBOUND", "OUTBOUND"] }).notNull(),
   content: text("content").notNull(),
-  sentBy: text("sent_by", { enum: ["contact", "agent", "ai", "system"] }).notNull(),
-  sentByUserId: uuid("sent_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  sentBy: text("sent_by", {
+    enum: ["contact", "agent", "ai", "system"],
+  }).notNull(),
+  sentByUserId: uuid("sent_by_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+export const auditLogs = pgTable("audit_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
+  actorEmail: text("actor_email").notNull(),
+  action: text("action").notNull(), // ex: "user.created", "contact.deleted"
+  resourceType: text("resource_type").notNull(), // ex: "user", "contact"
+  resourceId: text("resource_id"),
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -95,6 +120,7 @@ export const organizationRelations = relations(organizations, ({ many }) => ({
   users: many(users),
   contacts: many(contacts),
   conversations: many(conversations),
+  auditLogs: many(auditLogs),
 }));
 
 export const userRelations = relations(users, ({ one }) => ({
@@ -139,6 +165,17 @@ export const messageRelations = relations(messages, ({ one }) => ({
   }),
   sentByUser: one(users, {
     fields: [messages.sentByUserId],
+    references: [users.id],
+  }),
+}));
+
+export const auditLogRelations = relations(auditLogs, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [auditLogs.organizationId],
+    references: [organizations.id],
+  }),
+  actor: one(users, {
+    fields: [auditLogs.actorId],
     references: [users.id],
   }),
 }));

@@ -1,17 +1,17 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { db } from "@/lib/db/client";
-import { users } from "@/lib/db/schema/index";
+import { users, organizations } from "@/lib/db/schema/index";
 import { eq } from "drizzle-orm";
 import { compare } from "bcryptjs";
 import { z } from "zod";
+import { writeAuditLog } from "@/lib/audit";
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
 });
 
-// Tipo estendido do user que retornamos no authorize
 interface AuthUser {
   id: string;
   name: string;
@@ -33,8 +33,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         if (!user || !user.isActive) return null;
 
+        // Validar suspensão da organização (Fase 1: suspensão de empresa)
+        const [org] = await db
+          .select({ id: organizations.id, suspended: organizations.suspended })
+          .from(organizations)
+          .where(eq(organizations.id, user.organizationId))
+          .limit(1);
+
+        if (!org || org.suspended) {
+          return null;
+        }
+
         const valid = await compare(password, user.passwordHash);
         if (!valid) return null;
+
+        await writeAuditLog({
+          organizationId: user.organizationId,
+          actorId: user.id,
+          actorEmail: user.email,
+          action: "user.login",
+          resourceType: "user",
+          resourceId: user.id,
+        });
 
         return {
           id: user.id,

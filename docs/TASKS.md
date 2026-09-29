@@ -2,39 +2,34 @@
 
 Atualizado em: 2026-09-28
 
-## ATIVA — T-002: fundação do repositório
+## ATIVA — T-004: integração WAHA e persistência de conversas (Fase 2)
 
-Objetivo: scaffold mínimo funcional e verificável da aplicação.
+Objetivo: receber e armazenar mensagens reais do WhatsApp via WAHA com idempotência, HMAC e rastreabilidade.
 
-- [ ] Inicializar Next.js (App Router) + TypeScript estrito;
-- [ ] Configurar Tailwind CSS + shadcn/ui;
-- [ ] Configurar Drizzle ORM + schema base (organizations, users);
-- [ ] Configurar NextAuth.js (credentials + JWT);
-- [ ] Configurar pg-boss (fila persistente);
-- [ ] Criar processo worker separado;
-- [ ] Configurar Docker Compose (web, worker, postgres, waha);
-- [ ] Configurar lint (ESLint), formatação (Prettier) e testes (Vitest);
-- [ ] Criar comando único de verificação (`pnpm check`);
-- [ ] Documentar execução local (`docs/DEV.md`).
+- [ ] Gerenciamento de sessão WAHA por organização;
+- [ ] Endpoints e polling de status da sessão (`session.status`, QR code);
+- [ ] Ingestão robusta de webhook com validação HMAC e idempotência via `waha_message_id`;
+- [ ] Outbox para envio confiável de mensagens de texto;
+- [ ] Processamento de confirmações (`message.ack`);
+- [ ] Interface básica de listagem e detalhe de conversas;
+- [ ] Alertas e health check de conexão.
 
 Critério de conclusão:
 
-- `pnpm check` passa sem erros;
-- containers sobem com `docker compose up`;
-- login funcional com usuário seed.
+- Mensagem simulada ou real entra via webhook, é armazenada sem duplicidade e reflete na conversa;
+- Envio de resposta manual registrado na fila com status rastreável;
+- Testes automatizados passando.
 
 ## Próximas
 
-### T-003: identidade e isolamento (Fase 1)
+### T-005: controle humano e runtime do agente IA (Fase 3)
 
-Executar Fase 1 do `docs/ROADMAP.md` após T-002: schema completo de tenant, convites, permissões e seed de dados.
-
-### T-004: integração WAHA
-
-Configurar sessão WAHA, webhook HMAC, validação de `message.any` e persistência de conversa.
+Estados de controle (`HUMAN_ACTIVE`, `AI_ACTIVE`), `control_version` com proteção contra envio concorrente, runtime de IA com ferramentas permitidas e limites de execução.
 
 ## Concluídas
 
+- [x] T-003 — identidade e isolamento (Fase 1: login, layout com sidebar, gestão de usuários com roles, gestão de contatos, suspensão de organização, trilha de auditoria e testes de isolamento multi-tenant).
+- [x] T-002 — fundação do repositório (Next.js 15, Drizzle, NextAuth v5, pg-boss, worker, Docker Compose, Vitest, ESLint, Prettier).
 - [x] T-001 — fechar decisões técnicas da Fase 0 (D-006 a D-012 aprovadas).
 - [x] T-000B — otimizar contexto e orquestração entre Codex e Antigravity.
 - [x] T-000 — documentar escopo, arquitetura conceitual, roadmap e protocolo portátil de agentes.
