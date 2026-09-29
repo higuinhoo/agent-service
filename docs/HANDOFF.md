@@ -4,35 +4,31 @@ Atualizado em: 2026-09-28
 
 ## Objetivo
 
-Reduzir tokens e habilitar orquestração controlada no Codex e Antigravity.
+Fase 1 concluída com sucesso: login, isolamento multi-tenant por organization_id, gestão de membros, contatos, auditoria e testes automatizados.
 
 ## Mudanças
 
-- `AGENTS.md` reduzido a regras globais;
-- `START_HERE.md` convertido em roteador de contexto;
-- cinco skills especializadas adicionadas;
-- script de resumo operacional criado;
-- regras/workflows do Antigravity evitam leitura integral;
-- orquestração opt-in com máximo de três subagentes;
-- D-013 registrada.
+- Schema Drizzle com suporte a suspensão de tenant e tabela de auditoria (`audit_logs`);
+- Autenticação NextAuth v5 com verificação de suspensão e auditoria de login;
+- UI de Login, Layout com navegação, Painel de Visão Geral, Contatos, Usuários e Auditoria;
+- Server actions tipadas com validação Zod e auditoria automática;
+- Testes automatizados de isolamento de dados entre tenants (Vitest);
+- Repositório sincronizado no GitHub: `higuinhoo/agent-service`.
 
 ## Arquivos
 
-`AGENTS.md`, `README.md`, `docs/{START_HERE,STATUS,TASKS,DECISIONS,HANDOFF}.md`, `.agents/rules/project-context.md`, `.agents/workflows/*.md`, `.agents/skills/*/SKILL.md`, `scripts/project-status.ps1`.
+`src/app/login/page.tsx`, `src/app/dashboard/*`, `src/lib/actions/*`, `src/lib/db/queries/*`, `src/lib/audit.ts`, `src/test/isolation/tenant-isolation.test.ts`, `docs/STATUS.md`, `docs/TASKS.md`, `docs/HANDOFF.md`.
 
 ## Verificação
 
-- `pwsh scripts/project-status.ps1` executado;
-- skills validadas pelo `quick_validate.py` do skill-creator;
-- estrutura e regra de tarefa ativa verificadas;
-- não há aplicação, build ou testes de código neste estágio.
+- `pnpm check` executado (lint, prettier, typecheck, vitest) — 100% verde;
+- 5 testes automatizados passando;
+- Push no GitHub realizado com sucesso na branch `main`.
 
 ## Riscos
 
-- ferramentas podem aplicar políticas próprias que prevalecem sobre o repositório;
-- escrita paralela deve usar arquivos exclusivos ou worktrees;
-- stack técnica continua pendente.
+- Validação da conectividade real com instâncias do WAHA ao iniciar a Fase 2.
 
 ## Próximo passo único
 
-Executar T-001: aprovar D-006 a D-012 antes de gerar código.
+Executar T-004: implementar integração WAHA (gerenciamento de sessão, QR code, webhook HMAC e outbox).
