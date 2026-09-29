@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { getConversationById, getMessagesByConversation } from "@/lib/db/queries";
 import { sendManualReplyAction } from "@/lib/actions/whatsapp";
+import { takeoverConversationAction, returnConversationToAiAction } from "@/lib/actions/agent";
 import { redirect, notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
@@ -31,6 +32,18 @@ export default async function ConversationDetailPage({
   const isHuman = conv.status === "HUMAN_ACTIVE";
   const isAI = conv.status === "AI_ACTIVE";
 
+  async function handleTakeover() {
+    "use server";
+    await takeoverConversationAction(conversationId);
+    revalidatePath(`/dashboard/conversations/${conversationId}`);
+  }
+
+  async function handleReturnToAi() {
+    "use server";
+    await returnConversationToAiAction(conversationId);
+    revalidatePath(`/dashboard/conversations/${conversationId}`);
+  }
+
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       {/* Header do Chat */}
@@ -57,12 +70,34 @@ export default async function ConversationDetailPage({
           </div>
         </div>
 
-        <Link
-          href="/dashboard/conversations"
-          className="text-xs font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
-        >
-          ← Voltar para lista
-        </Link>
+        <div className="flex items-center gap-3">
+          {isHuman ? (
+            <form action={handleReturnToAi}>
+              <button
+                type="submit"
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-blue-700"
+              >
+                Devolver à IA
+              </button>
+            </form>
+          ) : (
+            <form action={handleTakeover}>
+              <button
+                type="submit"
+                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400"
+              >
+                Assumir Atendimento
+              </button>
+            </form>
+          )}
+
+          <Link
+            href="/dashboard/conversations"
+            className="text-xs font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            ← Voltar para lista
+          </Link>
+        </div>
       </div>
 
       {/* Histórico de Mensagens */}

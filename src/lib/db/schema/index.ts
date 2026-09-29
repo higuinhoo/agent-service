@@ -17,6 +17,12 @@ export const messageDeliveryStatusEnum = pgEnum("message_delivery_status", [
   "READ",
   "FAILED",
 ]);
+export const agentRunStatusEnum = pgEnum("agent_run_status", [
+  "RUNNING",
+  "COMPLETED",
+  "ABORTED_HUMAN_INTERVENTION",
+  "FAILED",
+]);
 
 // ─── Organizations (tenants) ──────────────────────────────────────────────────
 
@@ -107,6 +113,63 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ─── Agent Configs (Fase 3: Configuração do Agente IA por Tenant) ─────────────
+
+export const agentConfigs = pgTable("agent_configs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .unique()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull().default("Atendente Virtual IA"),
+  systemPrompt: text("system_prompt")
+    .notNull()
+    .default(
+      "Você é um assistente virtual atencioso e eficiente. Seu objetivo é tirar dúvidas sobre a empresa, listar serviços e oferecer agendamentos.",
+    ),
+  companyInfo: text("company_info")
+    .notNull()
+    .default("Horário de funcionamento: Seg-Sex das 8h às 18h."),
+  model: text("model").notNull().default("gpt-4o-mini"),
+  temperature: text("temperature").notNull().default("0.7"),
+  isActive: boolean("is_active").notNull().default(true),
+  version: text("version").notNull().default("1"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Agent Runs (Fase 3: Observabilidade dos Turnos do Agente) ────────────────
+
+export const agentRuns = pgTable("agent_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  conversationId: uuid("conversation_id")
+    .notNull()
+    .references(() => conversations.id, { onDelete: "cascade" }),
+  controlVersionCaptured: text("control_version_captured").notNull(),
+  status: agentRunStatusEnum("status").notNull().default("RUNNING"),
+  tokensPrompt: text("tokens_prompt"),
+  tokensCompletion: text("tokens_completion"),
+  executionTimeMs: text("execution_time_ms"),
+  reason: text("reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Tool Calls (Fase 3: Auditoria de Ferramentas Invocadas) ──────────────────
+
+export const toolCalls = pgTable("tool_calls", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id")
+    .notNull()
+    .references(() => agentRuns.id, { onDelete: "cascade" }),
+  toolName: text("tool_name").notNull(),
+  input: jsonb("input").notNull(),
+  output: jsonb("output"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── Webhook Events (Idempotência e Auditoria de Webhooks) ─────────────────────
 
 export const webhookEvents = pgTable("webhook_events", {
@@ -137,11 +200,15 @@ export const auditLogs = pgTable("audit_logs", {
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 
-export const organizationRelations = relations(organizations, ({ many }) => ({
+export const organizationRelations = relations(organizations, ({ many, one }) => ({
   users: many(users),
   contacts: many(contacts),
   conversations: many(conversations),
   auditLogs: many(auditLogs),
+  agentConfig: one(agentConfigs, {
+    fields: [organizations.id],
+    references: [agentConfigs.organizationId],
+  }),
 }));
 
 export const userRelations = relations(users, ({ one }) => ({
@@ -173,6 +240,7 @@ export const conversationRelations = relations(conversations, ({ one, many }) =>
     references: [users.id],
   }),
   messages: many(messages),
+  agentRuns: many(agentRuns),
 }));
 
 export const messageRelations = relations(messages, ({ one }) => ({
@@ -187,6 +255,32 @@ export const messageRelations = relations(messages, ({ one }) => ({
   sentByUser: one(users, {
     fields: [messages.sentByUserId],
     references: [users.id],
+  }),
+}));
+
+export const agentConfigRelations = relations(agentConfigs, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [agentConfigs.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const agentRunRelations = relations(agentRuns, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [agentRuns.organizationId],
+    references: [organizations.id],
+  }),
+  conversation: one(conversations, {
+    fields: [agentRuns.conversationId],
+    references: [conversations.id],
+  }),
+  toolCalls: many(toolCalls),
+}));
+
+export const toolCallRelations = relations(toolCalls, ({ one }) => ({
+  run: one(agentRuns, {
+    fields: [toolCalls.runId],
+    references: [agentRuns.id],
   }),
 }));
 

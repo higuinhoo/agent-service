@@ -1,6 +1,7 @@
 import { getQueue, QUEUES } from "@/lib/queue";
 import type PgBoss from "pg-boss";
 import { processOutboundMessage, type OutboundJobPayload } from "@/lib/waha/outbox";
+import { executeAgentTurn } from "@/lib/ai/runtime";
 
 // ─── Payload types ────────────────────────────────────────────────────────────
 
@@ -17,11 +18,29 @@ interface InboundMessageJob {
 
 async function handleInboundMessage(jobs: PgBoss.Job<InboundMessageJob>[]): Promise<void> {
   for (const job of jobs) {
-    const { conversationId, from, body, session } = job.data;
+    const { conversationId, organizationId, from, body, session } = job.data;
     console.info(
       `[worker] process-inbound: conv=${conversationId} from=${from} session=${session}`,
     );
-    console.info(`[worker] message: ${body.slice(0, 80)}`);
+
+    try {
+      // Disparar turno do agente IA
+      const result = await executeAgentTurn({
+        conversationId,
+        organizationId,
+        incomingMessage: body,
+      });
+
+      if (result.completed) {
+        console.info(`[worker] agent completed turn for conv=${conversationId}`);
+      } else if (result.aborted) {
+        console.warn(`[worker] agent aborted turn for conv=${conversationId}: ${result.reason}`);
+      } else {
+        console.info(`[worker] agent did not reply: ${result.reason}`);
+      }
+    } catch (err) {
+      console.error(`[worker] agent error for conv=${conversationId}:`, err);
+    }
   }
 }
 

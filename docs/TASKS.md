@@ -2,32 +2,35 @@
 
 Atualizado em: 2026-09-28
 
-## ATIVA — T-005: controle humano e runtime do agente IA (Fase 3)
+## ATIVA — T-006: agenda local (Fase 4)
 
-Objetivo: gerenciar os estados de conversa, proteção atômica pré-envio (`control_version`), runtime de IA com ferramentas permitidas e limites de execução.
+Objetivo: gerenciar serviços, profissionais/recursos, disponibilidade recorrente, bloqueios de horário e holds temporários sem sobreposição.
 
-- [ ] Estados formais da conversa (`OPEN`, `AI_ACTIVE`, `HUMAN_ACTIVE`, `CLOSED`);
-- [ ] Mecanismo de devolução manual da conversa para a IA no painel (D-005);
-- [ ] Runtime do agente: prompts estruturados, adapter agnóstico e tool calling;
-- [ ] Ferramentas permitidas iniciais (consulta de horários e agendamento);
-- [ ] Limites de tempo, chamadas e custo por turno do agente;
-- [ ] Registro estruturado de runs e tool calls no banco;
-- [ ] Teste automatizado de proteção contra corrida e cancelamento pré-envio.
+- [ ] Tabela e CRUD de serviços (`services`);
+- [ ] Tabela e CRUD de profissionais/recursos (`resources`);
+- [ ] Regras de disponibilidade recorrente (`availability_rules`) e exceções/bloqueios (`availability_exceptions`);
+- [ ] Holds temporários com expiração para garantir reserva segura durante o atendimento (`booking_holds`);
+- [ ] Criação, confirmação, reagendamento e cancelamento de agendamentos (`bookings`);
+- [ ] Restrição estrita de banco contra sobreposição de horários (anti-double booking);
+- [ ] Visualização de agenda no painel (visão diária e semanal);
+- [ ] Ferramentas do agente IA para consultar disponibilidade e criar holds/agendamentos;
+- [ ] Testes automatizados de concorrência e sobreposição.
 
 Critério de conclusão:
 
-- IA gera respostas com tool calling quando em `AI_ACTIVE`;
-- Intervenção humana impede envio concorrente em qualquer estágio do processamento;
+- Dois pedidos simultâneos não conseguem confirmar o mesmo recurso e horário;
+- Holds expiram automaticamente liberando o slot;
 - Testes automatizados passando.
 
 ## Próximas
 
-### T-006: agenda local (Fase 4)
+### T-007: integração Google Calendar (Fase 5)
 
-Serviços, disponibilidade recorrente, bloqueios, holds com expiração e criação sem sobreposição.
+Conexão OAuth, seleção de calendário, consulta de períodos ocupados (FreeBusy), criação e compensação de falha.
 
 ## Concluídas
 
+- [x] T-005 — controle humano e runtime do agente IA (Fase 3: transições de estado, proteção atômica pré-envio contra corrida com intervenção humana, ferramentas permitidas, handoff para humano via tool ou dashboard D-004, devolução manual à IA D-005, persistência de runs e tool calls, UI de configuração do agente e 14/14 testes passando).
 - [x] T-004 — integração WAHA e persistência de conversas (Fase 2: webhook HMAC no corpo bruto, resolução de tenant por sessão confiável, deduplicação com idempotência, detecção de intervenção humana D-004, processamento de ACKs, outbox com verificação atômica pré-envio, UI de conversas, chat e pareamento WhatsApp).
 - [x] T-003 — identidade e isolamento (Fase 1: login, layout com sidebar, gestão de usuários com roles, gestão de contatos, suspensão de organização, trilha de auditoria e testes de isolamento multi-tenant).
 - [x] T-002 — fundação do repositório (Next.js 15, Drizzle, NextAuth v5, pg-boss, worker, Docker Compose, Vitest, ESLint, Prettier).

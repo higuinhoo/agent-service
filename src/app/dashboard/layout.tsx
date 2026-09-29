@@ -85,6 +85,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
               WhatsApp
             </Link>
             <Link
+              href="/dashboard/agent"
+              className="flex items-center rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Agente IA
+            </Link>
+            <Link
               href="/dashboard/audit"
               className="flex items-center rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
