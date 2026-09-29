@@ -24,16 +24,16 @@ Continuar T-006 e concluir a agenda local sem ampliar o escopo do MVP.
 
 ## Verificação
 
-- `pnpm check` verde: 24 testes passando e 5 testes PostgreSQL opt-in ignorados sem ambiente;
-- `pnpm build` verde com URL de banco fictícia apenas para inicialização do client;
-- migration validada por testes de contrato, mas não aplicada em PostgreSQL real porque o Docker Desktop falha ao iniciar com um socket local obsoleto (`sailor-ingest.sock`).
+- `pnpm check` verde: 24 testes unitários/contrato passando;
+- `RUN_DATABASE_TESTS=1` verde: 5 testes de integração com PostgreSQL 16 real executados e aprovados com 100% de sucesso (concorrência, expiração, isolamento de tenant, reagendamento e bloqueio pós-intervenção humana);
+- `pnpm build` verde: build de produção do Next.js 15 gerou todas as 14 rotas sem falhas;
+- Migration `0000_fat_young_avengers.sql` aplicada com sucesso e corrigida contra erro de coerção entre os enums `booking_hold_status` e `booking_status`.
 
 ## Riscos
 
-- executar a migration em PostgreSQL 16 descartável antes de usar banco persistente;
-- o arquivo `0000` é a primeira baseline versionada; banco criado fora do histórico do Drizzle precisa de estratégia de baseline antes da aplicação;
-- o teste real de concorrência, expiração, isolamento, reagendamento e controle humano está pronto em `scheduling-database.test.ts`, aguardando ambiente PostgreSQL ativo.
+- O Docker Desktop no Windows requer 1 a 2 minutos para inicializar completamente o subsistema WSL2 e o pipe nomeado `\\.\pipe\docker_cli`;
+- Integração OAuth com Google Calendar (Fase 5) precisará de credenciais e gerenciamento seguro de tokens por organização.
 
 ## Próximo passo único
 
-Corrigir a inicialização do Docker Desktop, aplicar a migration e executar `RUN_DATABASE_TESTS=1` contra PostgreSQL 16 descartável.
+Iniciar T-007: integração com Google Calendar (Fase 5: fluxo OAuth, tokens por organização, sincronização FreeBusy e criação de eventos).

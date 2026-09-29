@@ -14,7 +14,7 @@ Objetivo: gerenciar serviços, profissionais/recursos, disponibilidade recorrent
 - [x] Restrição estrita de banco contra sobreposição de horários (anti-double booking);
 - [x] Visualização de agenda no painel (visão diária e semanal);
 - [x] Ferramentas do agente IA para listar serviços, consultar slots, criar hold e confirmar agendamento;
-- [ ] Testes automatizados — unitários e contrato SQL prontos; integração concorrente com PostgreSQL pendente.
+- [x] Testes automatizados — 24 testes unitários/contrato e 5 testes de integração concorrente com PostgreSQL real passando.
 
 Critério de conclusão:
 

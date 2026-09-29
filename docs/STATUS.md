@@ -45,12 +45,11 @@ Fase 4 em andamento — fundação transacional e painel inicial da agenda local
 - regras de disponibilidade e exceções podem ser criadas, listadas e removidas pelo painel;
 - cancelamento e reagendamento usam transação e hold prévio;
 - ferramentas de agenda da IA bloqueiam a conversa na transação e validam `control_version`, preservando a prioridade humana;
-- testes automatizados passando (24 testes; 5 testes PostgreSQL opt-in aguardam ambiente);
+- testes automatizados passando (29/29 testes passando, incluindo a suíte completa de concorrência com PostgreSQL 16 real);
 - `pnpm check` 100% verde: lint ✅ format ✅ typecheck ✅ tests ✅.
 - build de produção validado com todas as rotas do App Router, incluindo `/dashboard/schedule`.
 
 ## O que não existe
 
-- teste de concorrência contra PostgreSQL real e aplicação da migration em banco descartável;
 - integração com Google Calendar (Fase 5);
 - piloto em produção com Docker e volumes reais (Fase 6).

@@ -321,9 +321,14 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
-  IF (TG_TABLE_NAME = 'booking_holds' AND NEW.status <> 'ACTIVE')
-     OR (TG_TABLE_NAME = 'bookings' AND NEW.status <> 'CONFIRMED') THEN
-    RETURN NEW;
+  IF TG_TABLE_NAME = 'booking_holds' THEN
+    IF NEW.status::text <> 'ACTIVE' THEN
+      RETURN NEW;
+    END IF;
+  ELSIF TG_TABLE_NAME = 'bookings' THEN
+    IF NEW.status::text <> 'CONFIRMED' THEN
+      RETURN NEW;
+    END IF;
   END IF;
 
   PERFORM pg_advisory_xact_lock(
@@ -336,7 +341,7 @@ BEGIN
     AND resource_id = NEW.resource_id
     AND status = 'ACTIVE'
     AND expires_at <= now()
-    AND id <> NEW.id;
+    AND (TG_TABLE_NAME <> 'booking_holds' OR id <> NEW.id);
 
   IF EXISTS (
     SELECT 1
