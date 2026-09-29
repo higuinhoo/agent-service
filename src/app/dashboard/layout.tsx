@@ -1,6 +1,7 @@
 import { auth, signOut } from "@/lib/auth";
 import { getOrganizationById } from "@/lib/db/queries";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -53,30 +54,42 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <div className="flex flex-1">
         <aside className="w-56 border-r border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
           <nav className="space-y-1">
-            <a
+            <Link
               href="/dashboard"
               className="flex items-center rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               Visão Geral
-            </a>
-            <a
+            </Link>
+            <Link
+              href="/dashboard/conversations"
+              className="flex items-center rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              Conversas
+            </Link>
+            <Link
               href="/dashboard/contacts"
               className="flex items-center rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               Contatos
-            </a>
-            <a
+            </Link>
+            <Link
               href="/dashboard/users"
               className="flex items-center rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               Usuários
-            </a>
-            <a
+            </Link>
+            <Link
+              href="/dashboard/whatsapp"
+              className="flex items-center rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              WhatsApp
+            </Link>
+            <Link
               href="/dashboard/audit"
               className="flex items-center rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
             >
               Auditoria
-            </a>
+            </Link>
           </nav>
         </aside>
 

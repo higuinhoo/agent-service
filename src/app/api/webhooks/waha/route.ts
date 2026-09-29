@@ -1,56 +1,32 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { verifyWahaHmac } from "@/lib/waha/client";
-import { getQueue, QUEUES } from "@/lib/queue";
-import { z } from "zod";
-
-// Schema mínimo do payload WAHA — validação defensiva
-const wahaEventSchema = z.object({
-  event: z.string(),
-  session: z.string(),
-  payload: z.object({
-    id: z.string(),
-    from: z.string(),
-    body: z.string().optional(),
-    type: z.string(),
-    source: z.string().optional(),
-  }),
-});
+import { handleWahaWebhook, type WahaWebhookPayload } from "@/lib/waha/webhook-handler";
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const rawBody = await req.text();
   const signature = req.headers.get("x-hub-signature-256") ?? "";
 
-  // Verificar HMAC antes de processar
+  // 1. Validar HMAC usando o corpo bruto (Invariante waha-integration)
   const isValid = await verifyWahaHmac(rawBody, signature);
   if (!isValid) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    return NextResponse.json({ error: "Assinatura HMAC inválida" }, { status: 401 });
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawBody) as unknown;
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Payload JSON malformado" }, { status: 400 });
   }
 
-  const result = wahaEventSchema.safeParse(parsed);
-  if (!result.success) {
-    // Evento desconhecido — aceitar sem processar (WAHA envia vários eventos)
-    return NextResponse.json({ ok: true });
+  const payload = parsed as WahaWebhookPayload;
+  if (!payload || !payload.event || !payload.session) {
+    return NextResponse.json({ ok: true, ignored: true });
   }
 
-  const { event, payload } = result.data;
+  // 2. Persistir e processar assincronamente via handler
+  await handleWahaWebhook(payload);
 
-  // Processar apenas mensagens recebidas de contatos (não de app — D-010)
-  if (event === "message" && payload.source !== "app") {
-    const boss = await getQueue();
-    await boss.send(QUEUES.PROCESS_INBOUND, {
-      wahaMessageId: payload.id,
-      from: payload.from,
-      body: payload.body ?? "",
-      session: result.data.session,
-    });
-  }
-
+  // 3. Responder rapidamente 200 OK para o WAHA
   return NextResponse.json({ ok: true });
 }

@@ -4,33 +4,36 @@ Atualizado em: 2026-09-28
 
 ## Fase
 
-Fase 1 concluída — T-003 (Identidade e isolamento) concluída. ATIVA: T-004 (Fase 2: WAHA e persistência de conversas).
+Fase 2 concluída — T-004 (Integração WAHA e persistência de conversas) concluída. ATIVA: T-005 (Fase 3: controle humano e runtime do agente IA).
 
 ## O que existe
 
 - escopo, arquitetura, roadmap e decisões documentados (D-001–D-013 aprovadas);
 - scaffold Next.js 15 (App Router) + TypeScript estrito + Tailwind CSS;
-- schema Drizzle completo: organizations (com suporte a suspensão), users, contacts, conversations, messages, audit_logs;
+- schema Drizzle completo: organizations, users, contacts, conversations, messages (com status de entrega e ack), webhook_events, audit_logs;
 - autenticação NextAuth.js v5 (credentials + JWT, isolamento por organization_id, bloqueio de organizações suspensas);
-- interface de usuário funcional:
-  - tela de login elegante e responsiva;
-  - layout do dashboard com cabeçalho, indicador de tenant e menu lateral navegável;
-  - visão geral com métricas de equipe, tenant e contatos;
-  - módulo de contatos: listagem, cadastro e exclusão;
-  - módulo de equipe / usuários: controle de membros, papéis (admin/supervisor/agent) e ativação/desativação;
-  - módulo de auditoria: trilha imutável de eventos por tenant;
-- server actions seguras e tipadas com validação Zod e gravação automática de logs de auditoria;
-- testes automatizados de isolamento multi-tenant (Vitest: 5/5 testes passando);
-- fila pg-boss com filas PROCESS_INBOUND e SEND_OUTBOUND;
-- worker Node separado (consumer da fila);
-- cliente WAHA com verificação HMAC e envio de texto;
-- webhook `/api/webhooks/waha` com HMAC + enfileiramento idempotente;
-- Docker Compose: web, worker, postgres, waha;
+- integração WAHA robusta:
+  - cliente HTTP com suporte a sessões, status, QR Code e envio de texto;
+  - webhook `/api/webhooks/waha` com validação de assinatura HMAC no corpo bruto;
+  - resolução segura de tenant por mapeamento de sessão confiável;
+  - deduplicação com idempotência em banco (`webhook_events` e `waha_message_id`);
+  - detecção automática de intervenção humana (D-004) quando `fromMe=true` e `source=app`;
+  - processamento de status de entrega (`message.ack`: SENT, DELIVERED, READ);
+  - outbox durável no worker com verificação atômica pré-envio contra corrida com atendente;
+- interface do usuário (UI) funcional:
+  - tela de login e layout responsivo com menu lateral;
+  - visão geral com métricas;
+  - módulo de contatos (cadastro, listagem, exclusão);
+  - módulo de usuários com permissões de papéis;
+  - módulo de conversas do WhatsApp com listagem e indicadores de intervenção humana;
+  - tela de chat em tempo real com histórico e envio de resposta manual;
+  - módulo de pareamento e gerenciamento de sessão WhatsApp (QR Code e status);
+  - trilha de auditoria;
+- testes automatizados passando (10/10 testes no Vitest: isolamento multiempresa, idempotência, intervenção humana e outbox);
 - `pnpm check` 100% verde: lint ✅ format ✅ typecheck ✅ tests ✅.
 
 ## O que não existe
 
-- interface de conversas e chat em tempo real (Fase 2);
-- sincronização de status de sessão WAHA via UI (Fase 2);
-- controle humano vs IA (`control_version`) e runtime do agente (Fase 3);
-- agendamento e calendário local / Google Calendar (Fases 4 e 5).
+- runtime do agente de IA com tool calling e prompt estruturado (Fase 3);
+- agendamento e disponibilidade local (Fase 4);
+- integração com Google Calendar (Fase 5).

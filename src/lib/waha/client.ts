@@ -52,24 +52,53 @@ export async function verifyWahaHmac(body: string, signature: string): Promise<b
   return expected === signature;
 }
 
-// ─── Enviar mensagem de texto ─────────────────────────────────────────────────
+// ─── Gerenciamento de Sessões ────────────────────────────────────────────────
+
+export async function startSession(session = WAHA_SESSION): Promise<{ status: string }> {
+  return wahaFetch<{ status: string }>(`/api/sessions/${session}/start`, {
+    method: "POST",
+  });
+}
+
+export async function stopSession(session = WAHA_SESSION): Promise<{ status: string }> {
+  return wahaFetch<{ status: string }>(`/api/sessions/${session}/stop`, {
+    method: "POST",
+  });
+}
+
+export async function getSessionStatus(session = WAHA_SESSION): Promise<string> {
+  try {
+    const res = await wahaFetch<{ status: string }>(`/api/sessions/${session}`);
+    return res.status;
+  } catch {
+    return "STOPPED";
+  }
+}
+
+export async function getQRCode(session = WAHA_SESSION): Promise<string | null> {
+  try {
+    const res = await wahaFetch<{ qr?: string; raw?: string }>(`/api/${session}/auth/qr`);
+    return res.raw ?? res.qr ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── Envio de Mensagem ────────────────────────────────────────────────────────
 
 export async function sendTextMessage(
   to: string,
   text: string,
   session = WAHA_SESSION,
 ): Promise<string> {
+  // Limpar telefone mantendo apenas números
+  const cleanPhone = to.replace(/\D/g, "");
+  const chatId = cleanPhone.includes("@") ? cleanPhone : `${cleanPhone}@c.us`;
+
   const res = await wahaFetch<z.infer<typeof sendMessageResponseSchema>>(`/api/sendText`, {
     method: "POST",
-    body: JSON.stringify({ session, chatId: `${to}@c.us`, text }),
+    body: JSON.stringify({ session, chatId, text }),
   });
   const parsed = sendMessageResponseSchema.parse(res);
   return parsed.id;
-}
-
-// ─── Status da sessão ─────────────────────────────────────────────────────────
-
-export async function getSessionStatus(session = WAHA_SESSION): Promise<string> {
-  const res = await wahaFetch<{ status: string }>(`/api/sessions/${session}`);
-  return res.status;
 }

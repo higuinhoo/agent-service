@@ -10,6 +10,13 @@ export const conversationStatusEnum = pgEnum("conversation_status", [
   "HUMAN_ACTIVE",
   "CLOSED",
 ]);
+export const messageDeliveryStatusEnum = pgEnum("message_delivery_status", [
+  "PENDING",
+  "SENT",
+  "DELIVERED",
+  "READ",
+  "FAILED",
+]);
 
 // ─── Organizations (tenants) ──────────────────────────────────────────────────
 
@@ -89,12 +96,26 @@ export const messages = pgTable("messages", {
   wahaMessageId: text("waha_message_id").unique(),
   direction: text("direction", { enum: ["INBOUND", "OUTBOUND"] }).notNull(),
   content: text("content").notNull(),
+  deliveryStatus: messageDeliveryStatusEnum("delivery_status").notNull().default("PENDING"),
+  ack: text("ack"),
   sentBy: text("sent_by", {
     enum: ["contact", "agent", "ai", "system"],
   }).notNull(),
   sentByUserId: uuid("sent_by_user_id").references(() => users.id, {
     onDelete: "set null",
   }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── Webhook Events (Idempotência e Auditoria de Webhooks) ─────────────────────
+
+export const webhookEvents = pgTable("webhook_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventId: text("event_id").unique().notNull(),
+  event: text("event").notNull(),
+  session: text("session").notNull(),
+  payload: jsonb("payload").notNull(),
+  processed: boolean("processed").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -107,8 +128,8 @@ export const auditLogs = pgTable("audit_logs", {
     .references(() => organizations.id, { onDelete: "cascade" }),
   actorId: uuid("actor_id").references(() => users.id, { onDelete: "set null" }),
   actorEmail: text("actor_email").notNull(),
-  action: text("action").notNull(), // ex: "user.created", "contact.deleted"
-  resourceType: text("resource_type").notNull(), // ex: "user", "contact"
+  action: text("action").notNull(),
+  resourceType: text("resource_type").notNull(),
   resourceId: text("resource_id"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
